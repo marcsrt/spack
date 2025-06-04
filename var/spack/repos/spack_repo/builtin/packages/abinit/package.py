@@ -55,6 +55,7 @@ class Abinit(AutotoolsPackage, CudaPackage, ROCmPackage):
     variant("libxml2", default=False, description="Enable libxml2 support, used by multibinit")
     variant("gpu_openmp_offload", when="@10.4: +openmp", default=False,
             description="Enable OpenMP offload support. Requires CUDA & NVHPC or ROCM & Cray CE")
+    variant("gpu_aware_mpi", when="@10.4: +mpi+gpu_openmp_offload", default=False, description="Enable optimizations for GPU-aware MPI")
 
     variant(
         "optimization-flavor",
@@ -101,6 +102,21 @@ class Abinit(AutotoolsPackage, CudaPackage, ROCmPackage):
         depends_on("hipblas+rocm")
         depends_on("hipfft+rocm")
         depends_on("hipsolver+rocm")
+
+    # Need a MPI provider built with either CUDA or ROCM when configured
+    # with GPU-aware optimizations
+    with when("+gpu_aware_mpi+cuda"):
+        requires("^cray-mpich +cuda", when="^[virtuals=mpi] cray-mpich")
+        requires("^mpich +cuda", when="^[virtuals=mpi] mpich")
+        requires("^mvapich +cuda", when="^[virtuals=mpi] mvapich")
+        requires("^mvapich2 +cuda", when="^[virtuals=mpi] mvapich2")
+        requires("^mvapich2-gdr +cuda", when="^[virtuals=mpi] mvapich2-gdr")
+        requires("^openmpi+cuda", when="^[virtuals=mpi] openmpi")
+
+    with when("+gpu_aware_mpi+rocm"):
+        requires("^cray-mpich +rocm", when="^[virtuals=mpi] cray-mpich")
+        requires("^mpich +rocm", when="^[virtuals=mpi] mpich")
+        requires("^mvapich2-gdr +rocm", when="^[virtuals=mpi] mvapich2-gdr")
 
     # constrain version of hdf5
     depends_on("hdf5@:1.8", when="@9:9.8")
@@ -267,6 +283,9 @@ class Abinit(AutotoolsPackage, CudaPackage, ROCmPackage):
         if spec.satisfies("+rocm"):
             oapp(f"--with-rocm={spec['hip'].prefix}")
             oapp(f"GPU_ARCH={self.spec.variants['amdgpu_target'].value[0]}")
+
+        if spec.satisfies("+gpu_aware_mpi"):
+            oapp("--enable-mpi-gpu-aware=yes")
 
         # BLAS/LAPACK/SCALAPACK-ELPA
         linalg = spec["lapack"].libs + spec["blas"].libs
