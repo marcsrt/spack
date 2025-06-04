@@ -56,6 +56,7 @@ class Abinit(AutotoolsPackage, CudaPackage, ROCmPackage):
     variant("gpu_openmp_offload", when="@10.4: +openmp", default=False,
             description="Enable OpenMP offload support. Requires CUDA & NVHPC or ROCM & Cray CE")
     variant("gpu_aware_mpi", when="@10.4: +mpi+gpu_openmp_offload", default=False, description="Enable optimizations for GPU-aware MPI")
+    variant("gpu_markers", when="@10.4: +gpu_openmp_offload", default=False, description="Enable GPU markers, either NVTX for CUDA or rocTX for ROCM")
 
     variant(
         "optimization-flavor",
@@ -297,6 +298,9 @@ class Abinit(AutotoolsPackage, CudaPackage, ROCmPackage):
 
         if spec.satisfies("+gpu_aware_mpi"):
             oapp("--enable-mpi-gpu-aware=yes")
+
+        if spec.satisfies("+gpu_markers"):
+            oapp("--with-gpu-markers=yes")
 
         # BLAS/LAPACK/SCALAPACK-ELPA
         linalg = spec["lapack"].libs + spec["blas"].libs
