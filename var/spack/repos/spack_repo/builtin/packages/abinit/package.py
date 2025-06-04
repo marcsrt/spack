@@ -8,6 +8,9 @@ from spack_repo.builtin.build_systems.rocm import ROCmPackage
 
 from spack.package import *
 
+import os
+import sys
+from subprocess import PIPE, Popen
 
 class Abinit(AutotoolsPackage, CudaPackage, ROCmPackage):
     """ABINIT is a package whose main program allows one to find the total
@@ -29,9 +32,11 @@ class Abinit(AutotoolsPackage, CudaPackage, ROCmPackage):
 
     homepage = "https://abinit.github.io/abinit_web/"
     url = "https://forge.abinit.org/abinit-10.0.9.tar.gz"
+    git = "file:///home/marc/work/abinit/abinit-git"
     license("Apache-2.0")
 
     maintainers("downloadico")
+    version("develop", branch="develop")
     version("10.4.3", sha256="2150ac8472ad570f3cd3fa34c8bc6ac496c6715b319b69e3aa011a555d72d7d7")
     version("10.2.7", sha256="e0e1049b01b4ebaec29be632cd554caeccb4b2a8acf2e148c8ac505e6b226dc1")
     version("10.0.9", sha256="17650580295e07895f6c3c4b1f3f0fe0e0f3fea9bab5fd8ce7035b16a62f8e5e")
@@ -73,6 +78,8 @@ class Abinit(AutotoolsPackage, CudaPackage, ROCmPackage):
     depends_on("c", type="build")  # generated
     depends_on("cxx", type="build")  # generated
     depends_on("fortran", type="build")  # generated
+    depends_on("automake", type="build", when="@develop")
+    depends_on("python", type="build", when="@develop")
 
     depends_on("atompaw", when="@:8")
     depends_on("blas")
@@ -216,6 +223,24 @@ class Abinit(AutotoolsPackage, CudaPackage, ROCmPackage):
     # Fix obsolete bool typedef (breaks in gcc@15)
     # Fixed since 10.4
     patch("fix_for_gcc15_stdbool.patch", when="@9:10.2.7 %gcc@15:")
+
+    # ABINIT isn't a proper Autotools package :
+    # - release tarballs come with an already generated configure script, which is fine
+    # - actual source code requires running a Python script, config/scripts/makemake, for
+    #   generating configure script and few source files
+    #
+    # Since release tarballs come with configure script, we override
+    # autoreconf step mostly to call config/script/makemake for generating missing files
+    # for build from source code
+    def autoreconf(self, spec, prefix):
+        # If configure exists nothing needs to be done
+        if os.path.exists("configure"):
+            return
+
+        p = Popen("./config/scripts/makemake", stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        p.wait()
+
+        self.patch()
 
     def configure_args(self):
         spec = self.spec
@@ -432,6 +457,11 @@ class Abinit(AutotoolsPackage, CudaPackage, ROCmPackage):
     # to the library were stored in the lib/libhdf5.settings file.
     # Spack already knows how to link to HDF5, disable this check in configure
     def patch(self):
+        # If configure do not exists, do nothing,
+        # overrided autoreconf will call this method after configure generation
+        if not os.path.exists("configure"):
+            return
+
         filter_file(
             r"sd_hdf5_libs_extra=.*",
             "sd_hdf5_libs_extra=%s" % self.spec["hdf5"].libs.ld_flags,
